@@ -48,6 +48,6 @@ jobs:
             TUYA_BASE_URL=https://openapi.tuyaus.com
 
           secrets: |
-            TUYA_ACCESS_ID=projects/${{ env.PROJECT_ID }}/secrets/TUYA_ACCESS_ID:latest
-            TUYA_ACCESS_SECRET=projects/${{ env.PROJECT_ID }}/secrets/TUYA_ACCESS_SECRET:latest
-            AVAGENC_API_KEY=projects/${{ env.PROJECT_ID }}/secrets/AVAGENC_API_KEY:latest
+            TUYA_ACCESS_ID=TUYA_ACCESS_ID:latest
+            TUYA_ACCESS_SECRET=TUYA_ACCESS_SECRET:latest
+            AVAGENC_API_KEY=AVAGENC_API_KEY:latest
