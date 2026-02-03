@@ -61,7 +61,7 @@ jobs:
             TUYA_ACCESS_SECRET=${{ secrets.TUYA_ACCESS_SECRET }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
           secrets: |
-            API_KEY=PI_KEY:latest
+            API_KEY=API_KEY:latest
 
       - name: Make Service Public
         run: |
