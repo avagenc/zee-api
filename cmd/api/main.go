@@ -1,61 +1,110 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
-	"strings"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/clients/tuya"
-	"github.com/avagenc/agentic-tuya-smart/internal/config"
-	"github.com/avagenc/agentic-tuya-smart/internal/handlers"
-	"github.com/avagenc/agentic-tuya-smart/internal/middleware"
-	"github.com/avagenc/agentic-tuya-smart/internal/services"
-)
-
-const version = "0.3.1"
-
-var (
-	versionMajor = strings.Split(version, ".")[0]
-	APIPrefix    = "/v" + versionMajor
+	"github.com/avagenc/zee-api/internal/clients/tuya"
+	"github.com/avagenc/zee-api/internal/config"
+	"github.com/avagenc/zee-api/internal/handlers"
+	"github.com/avagenc/zee-api/internal/middleware"
+	"github.com/avagenc/zee-api/internal/postgres"
+	"github.com/avagenc/zee-api/internal/services"
+	"github.com/avagenc/zee-api/internal/system"
 )
 
 func main() {
-	// --- Get Configuration ---
-	cfg, err := config.NewConfig()
+	log.Println("In the name of Allah, The Most Compassionate, The Most Merciful")
+
+	appCfg, err := config.LoadApp()
 	if err != nil {
-		log.Fatalf("FATAL: Failed to load configuration: %v", err)
+		log.Fatalf("FATAL: Failed to load app config: %v", err)
 	}
 
-	// --- Dependency Injection ---
+	serverCfg, err := config.LoadServer()
+	if err != nil {
+		log.Fatalf("FATAL: Failed to load server config: %v", err)
+	}
 
-	// 1. Create Clients
-	tuyaClient, err := tuya.NewClient(cfg.TuyaAccessID, cfg.TuyaAccessSecret, cfg.TuyaBaseURL)
+	securityCfg, err := config.LoadSecurity()
+	if err != nil {
+		log.Fatalf("FATAL: Failed to load security config: %v", err)
+	}
+
+	tuyaCfg, err := config.LoadTuya()
+	if err != nil {
+		log.Fatalf("FATAL: Failed to load tuya config: %v", err)
+	}
+
+	pgCfg, err := config.LoadPGPool()
+	if err != nil {
+		log.Fatalf("FATAL: Failed to load postgres config: %v", err)
+	}
+
+	pool, err := postgres.NewPool(pgCfg)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to create database pool: %v", err)
+	}
+	defer pool.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := postgres.ValidateSchema(ctx, pool); err != nil {
+		log.Fatalf("FATAL: Schema validation failed: %v", err)
+	}
+
+	tuyaClient, err := tuya.NewClient(tuyaCfg.AccessID, tuyaCfg.AccessSecret, tuyaCfg.BaseURL)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create Tuya client: %v", err)
 	}
 
-	// 2. Create Services
 	deviceService := services.NewDeviceService(tuyaClient)
 
-	// 3. Create Handlers
-	deviceHandler := handlers.NewDeviceHandler(deviceService, APIPrefix)
-	homeHandler := handlers.NewHomeHandler(deviceService, APIPrefix)
-	rootHandler := handlers.NewRootHandler(version)
+	systemHandler := system.NewHandler(appCfg)
+	deviceHandler := handlers.NewDeviceHandler(deviceService, "/v0")
+	homeHandler := handlers.NewHomeHandler(deviceService, "/v0")
 
-	// 4. Create Middleware Authenticator
-	authenticator := middleware.NewAuthenticator(cfg.AvagencAPIKey)
+	apiKeyMiddleware := middleware.NewAPIKey(securityCfg)
 
-	// --- Register Routes ---
 	mux := http.NewServeMux()
 
-	mux.Handle("/", rootHandler)
-	mux.Handle(APIPrefix+"/devices/", authenticator.Middleware(deviceHandler))
-	mux.Handle(APIPrefix+"/homes/", authenticator.Middleware(homeHandler))
+	mux.HandleFunc("/", systemHandler.Index)
+	mux.Handle("/v0/devices/", apiKeyMiddleware.Authenticate(deviceHandler))
+	mux.Handle("/v0/homes/", apiKeyMiddleware.Authenticate(homeHandler))
 
-	// --- Start Server ---
-	log.Printf("In the name of Allah, The Most Compassionate, The Most Merciful")
-	log.Printf("Starting Avagenc Agentic Tuya Smart API on port %s\n", cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
-		log.Fatalf("FATAL: Failed to start server: %v", err)
+	server := &http.Server{
+		Addr:         ":" + serverCfg.Port,
+		Handler:      mux,
+		ReadTimeout:  serverCfg.ReadTimeout,
+		WriteTimeout: serverCfg.WriteTimeout,
+		IdleTimeout:  serverCfg.IdleTimeout,
 	}
+
+	go func() {
+		log.Printf("Starting %s v%s on port %s (env: %s)", appCfg.Name, appCfg.Version, serverCfg.Port, appCfg.Env)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Failed to start server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server gracefully...")
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("FATAL: Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server stopped")
 }

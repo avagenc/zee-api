@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/models"
+	"github.com/avagenc/zee-api/internal/models"
 )
 
 const (

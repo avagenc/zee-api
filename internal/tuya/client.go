@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/models"
+	"github.com/avagenc/zee-api/internal/models"
 )
 
 const (
@@ -17,44 +17,50 @@ const (
 	maxIoTRequestAttempts     = 2
 )
 
-type Client struct {
+type Config struct {
 	AccessID     string
 	AccessSecret string
 	BaseURL      string
+}
+
+type Client struct {
+	accessID     string
+	accessSecret string
+	baseURL      string
 	httpClient   *http.Client
-	Token        *models.TuyaToken
+	token        *models.TuyaToken
 	tokenLock    sync.RWMutex
 }
 
-func NewClient(accessID, accessSecret, baseURL string) (*Client, error) {
-	newClient := &Client{
-		AccessID:     accessID,
-		AccessSecret: accessSecret,
-		BaseURL:      baseURL,
+func NewClient(cfg *Config) (*Client, error) {
+	client := &Client{
+		accessID:     cfg.AccessID,
+		accessSecret: cfg.AccessSecret,
+		baseURL:      cfg.BaseURL,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
-		Token:        &models.TuyaToken{},
+		token:        &models.TuyaToken{},
 		tokenLock:    sync.RWMutex{},
 	}
 
-	if err := newClient.ensureValidToken(); err != nil {
+	if err := client.ensureValidToken(); err != nil {
 		return nil, fmt.Errorf("failed to set token during client initialization: %w", err)
 	}
 
-	return newClient, nil
+	return client, nil
 }
 
 func (c *Client) doIoTRequest(req models.TuyaRequest) (*models.TuyaResponse, error) {
 	for attempt := 0; attempt < maxIoTRequestAttempts; attempt++ {
-		fullURL := c.BaseURL + req.URLPath
+		fullURL := c.baseURL + req.URLPath
 
 		var accessToken string
 		c.tokenLock.RLock()
-		if c.Token != nil {
-			accessToken = c.Token.AccessToken
+		if c.token != nil {
+			accessToken = c.token.AccessToken
 		}
 		c.tokenLock.RUnlock()
 
-		signature, err := generateSignature(c.AccessID, c.AccessSecret, accessToken, req)
+		signature, err := generateSignature(c.accessID, c.accessSecret, accessToken, req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate signature: %w", err)
 		}
@@ -69,7 +75,7 @@ func (c *Client) doIoTRequest(req models.TuyaRequest) (*models.TuyaResponse, err
 		if len(bodyBytes) > 0 {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		httpReq.Header.Set("client_id", c.AccessID)
+		httpReq.Header.Set("client_id", c.accessID)
 		httpReq.Header.Set("sign", signature.Sign)
 		httpReq.Header.Set("t", signature.Timestamp)
 		httpReq.Header.Set("sign_method", signature.SignMethod)
@@ -114,9 +120,9 @@ func (c *Client) doIoTRequest(req models.TuyaRequest) (*models.TuyaResponse, err
 }
 
 func (c *Client) doTokenRequest(req models.TuyaRequest) (*models.TuyaResponse, error) {
-	fullURL := c.BaseURL + req.URLPath
+	fullURL := c.baseURL + req.URLPath
 
-	signature, err := generateSignature(c.AccessID, c.AccessSecret, "", req)
+	signature, err := generateSignature(c.accessID, c.accessSecret, "", req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token signature: %w", err)
 	}
@@ -126,7 +132,7 @@ func (c *Client) doTokenRequest(req models.TuyaRequest) (*models.TuyaResponse, e
 		return nil, fmt.Errorf("failed to create token request to %s: %w", fullURL, err)
 	}
 
-	httpReq.Header.Set("client_id", c.AccessID)
+	httpReq.Header.Set("client_id", c.accessID)
 	httpReq.Header.Set("sign", signature.Sign)
 	httpReq.Header.Set("t", signature.Timestamp)
 	httpReq.Header.Set("sign_method", signature.SignMethod)
@@ -173,7 +179,7 @@ func (c *Client) updateToken() error {
 
 	newToken.ExpireTime = time.Now().Unix() + newToken.ExpireTime
 
-	c.Token = &newToken
+	c.token = &newToken
 	return nil
 }
 
@@ -181,7 +187,7 @@ func (c *Client) ensureValidToken() error {
 	c.tokenLock.Lock()
 	defer c.tokenLock.Unlock()
 
-	if c.Token != nil && c.Token.ExpireTime > time.Now().Unix() {
+	if c.token != nil && c.token.ExpireTime > time.Now().Unix() {
 		return nil
 	}
 

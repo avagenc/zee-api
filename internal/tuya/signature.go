@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/models"
+	"github.com/avagenc/zee-api/internal/models"
 )
 
 func generateSignature(accessID, accessSecret, accessToken string, req models.TuyaRequest) (*models.TuyaSignature, error) {

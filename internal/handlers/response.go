@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/models"
+	"github.com/avagenc/zee-api/internal/models"
 )
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

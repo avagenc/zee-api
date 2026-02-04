@@ -4,20 +4,14 @@ import (
 	"fmt"
 
 	"github.com/ilyakaznacheev/cleanenv"
+
+	"github.com/avagenc/zee-api/internal/tuya"
 )
 
-type Tuya struct {
-	AccessID     string `env:"TUYA_ACCESS_ID" env-required:"true"`
-	AccessSecret string `env:"TUYA_ACCESS_SECRET" env-required:"true"`
-	BaseURL      string `env:"TUYA_BASE_URL" env-required:"true"`
-}
-
-func LoadTuya() (*Tuya, error) {
-	cfg := Tuya{}
-
-	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to load tuya config: %w", err)
-	}
-
-	return &cfg, nil
+func LoadTuya() (*tuya.Config, error) {
+    cfg := &tuya.Config{}
+    if err := cleanenv.ReadEnv(cfg); err != nil {
+        return nil, fmt.Errorf("failed to load tuya config: %w", err)
+    }
+    return cfg, nil
 }

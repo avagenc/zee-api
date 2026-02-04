@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/services"
+	"github.com/avagenc/zee-api/internal/services"
 )
 
 type HomeHandler struct {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/avagenc/agentic-tuya-smart/internal/models"
-	"github.com/avagenc/agentic-tuya-smart/internal/clients/tuya"
+	"github.com/avagenc/zee-api/internal/models"
+	"github.com/avagenc/zee-api/internal/clients/tuya"
 )
 
 type DeviceService struct {
