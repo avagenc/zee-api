@@ -1,110 +1,105 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/avagenc/zee-api/internal/tuya"
 	"github.com/avagenc/zee-api/internal/config"
-	"github.com/avagenc/zee-api/internal/handlers"
+	"github.com/avagenc/zee-api/internal/device"
 	"github.com/avagenc/zee-api/internal/middleware"
 	"github.com/avagenc/zee-api/internal/postgres"
-	"github.com/avagenc/zee-api/internal/services"
 	"github.com/avagenc/zee-api/internal/system"
+	"github.com/avagenc/zee-api/internal/tuya"
+	"github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
-	log.Println("In the name of Allah, The Most Compassionate, The Most Merciful")
-
-	appCfg, err := config.LoadApp()
+	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("FATAL: Failed to load app config: %v", err)
+		log.Fatalf("FATAL: %v", err)
 	}
 
-	serverCfg, err := config.LoadServer()
+	pgPool, err := postgres.NewPool(
+		cfg.Database.URL,
+		cfg.Database.MaxConns,
+		cfg.Database.MinConns,
+		cfg.Database.MaxConnLifetime,
+		cfg.Database.MaxConnIdleTime,
+	)
 	if err != nil {
-		log.Fatalf("FATAL: Failed to load server config: %v", err)
+		log.Fatalf("FATAL: Failed to connect to database: %v", err)
 	}
+	defer pgPool.Close()
 
-	securityCfg, err := config.LoadSecurity()
-	if err != nil {
-		log.Fatalf("FATAL: Failed to load security config: %v", err)
-	}
-
-	tuyaCfg, err := config.LoadTuya()
-	if err != nil {
-		log.Fatalf("FATAL: Failed to load tuya config: %v", err)
-	}
-
-	pgCfg, err := config.LoadPGPool()
-	if err != nil {
-		log.Fatalf("FATAL: Failed to load postgres config: %v", err)
-	}
-
-	pool, err := postgres.NewPool(pgCfg)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to create database pool: %v", err)
-	}
-	defer pool.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := postgres.ValidateSchema(ctx, pool); err != nil {
-		log.Fatalf("FATAL: Schema validation failed: %v", err)
-	}
-
-	tuyaClient, err := tuya.NewClient(tuyaCfg)
+	tuyaClient, err := tuya.NewClient(
+		cfg.Tuya.AccessID,
+		cfg.Tuya.AccessSecret,
+		cfg.Tuya.BaseURL,
+	)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create Tuya client: %v", err)
 	}
 
-	deviceService := services.NewDeviceService(tuyaClient)
+	svc := struct {
+		device device.Service
+	}{
+		device: device.NewService(tuyaClient),
+	}
 
-	systemHandler := system.NewHandler(appCfg)
-	deviceHandler := handlers.NewDeviceHandler(deviceService, "/v0")
-	homeHandler := handlers.NewHomeHandler(deviceService, "/v0")
+	mw := struct {
+		apiKey       *middleware.APIKey
+		userIdentity *middleware.UserIdentity
+		requestID    func(http.Handler) http.Handler
+		realIP       func(http.Handler) http.Handler
+		logger       func(http.Handler) http.Handler
+		recoverer    func(http.Handler) http.Handler
+	}{
+		apiKey:       middleware.NewAPIKey(cfg.Security.APIKey),
+		userIdentity: middleware.NewUserIdentity(),
+		requestID:    chiMiddleware.RequestID,
+		realIP:       chiMiddleware.RealIP,
+		logger:       chiMiddleware.Logger,
+		recoverer:    chiMiddleware.Recoverer,
+	}
 
-	apiKeyMiddleware := middleware.NewAPIKey(securityCfg)
+	hdl := struct {
+		system *system.Handler
+		device *device.Handler
+	}{
+		system: system.NewHandler(cfg.App.Name, cfg.App.Version, cfg.App.Env),
+		device: device.NewHandler(svc.device),
+	}
 
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
 
-	mux.HandleFunc("/", systemHandler.Index)
-	mux.Handle("/v0/devices/", apiKeyMiddleware.Authenticate(deviceHandler))
-	mux.Handle("/v0/homes/", apiKeyMiddleware.Authenticate(homeHandler))
+	r.Use(mw.requestID)
+	r.Use(mw.realIP)
+	r.Use(mw.logger)
+	r.Use(mw.recoverer)
+	r.Use(mw.apiKey.Authenticate)
+
+	r.Get("/", hdl.system.Index)
+
+	r.Group(func(r chi.Router) {
+		r.Use(mw.userIdentity.ToContext)
+
+		r.Post("/devices/commands", hdl.device.SendCommands)
+		r.Get("/homes/{homeId}/devices", hdl.device.ListByHome)
+	})
 
 	server := &http.Server{
-		Addr:         ":" + serverCfg.Port,
-		Handler:      mux,
-		ReadTimeout:  serverCfg.ReadTimeout,
-		WriteTimeout: serverCfg.WriteTimeout,
-		IdleTimeout:  serverCfg.IdleTimeout,
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      r,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
-	go func() {
-		log.Printf("Starting %s v%s on port %s (env: %s)", appCfg.Name, appCfg.Version, serverCfg.Port, appCfg.Env)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("FATAL: Failed to start server: %v", err)
-		}
-	}()
+	log.Printf("In the name of Allah, The Most Compassionate, The Most Merciful")
+	log.Printf("Starting %s (%s) on port %s\n", cfg.App.Name, cfg.App.Version, cfg.Server.Port)
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("Shutting down server gracefully...")
-
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("FATAL: Server forced to shutdown: %v", err)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("FATAL: Failed to start API: %v", err)
 	}
-
-	log.Println("Server stopped")
 }

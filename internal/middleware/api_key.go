@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/avagenc/zee-api/internal/config"
 	"github.com/avagenc/zee-api/pkg/api"
 )
 
@@ -12,8 +11,8 @@ type APIKey struct {
 	apiKey string
 }
 
-func NewAPIKey(cfg *config.Security) *APIKey {
-	return &APIKey{apiKey: cfg.APIKey}
+func NewAPIKey(apiKey string) *APIKey {
+	return &APIKey{apiKey: apiKey}
 }
 
 func (a *APIKey) Authenticate(next http.Handler) http.Handler {

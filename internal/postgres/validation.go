@@ -17,7 +17,7 @@ func ValidateSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	if !exists {
-		return fmt.Errorf("critical table 'books' does not exist. Please run database migrations")
+		return fmt.Errorf("critical table 'tuya_accounts' does not exist. Please run database migrations")
 	}
 
 	return nil

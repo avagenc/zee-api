@@ -3,16 +3,21 @@ package system
 import (
 	"net/http"
 
-	"github.com/avagenc/zee-api/internal/config"
 	"github.com/avagenc/zee-api/pkg/api"
 )
 
 type Handler struct {
-	cfg *config.App
+	name    string
+	version string
+	env     string
 }
 
-func NewHandler(cfg *config.App) *Handler {
-	return &Handler{cfg: cfg}
+func NewHandler(name, version, env string) *Handler {
+	return &Handler{
+		name:    name,
+		version: version,
+		env:     env,
+	}
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
@@ -22,10 +27,10 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		Environment string `json:"environment"`
 		Version     string `json:"version"`
 	}{
-		Service:     h.cfg.Name,
+		Service:     h.name,
 		Status:      "UP",
-		Environment: h.cfg.Env,
-		Version:     h.cfg.Version,
+		Environment: h.env,
+		Version:     h.version,
 	}
 
 	api.Respond(w, http.StatusOK, api.NewSuccessResponse("Service is healthy", data, nil))

@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	
 )
 
 const (
@@ -17,10 +15,21 @@ const (
 	maxIoTRequestAttempts     = 2
 )
 
-type Config struct {
-	AccessID     string
-	AccessSecret string
-	BaseURL      string
+type Request struct {
+	Method  string `json:"method"`
+	URLPath string `json:"url_path"`
+	Body    string `json:"body,omitempty"`
+}
+
+type Response struct {
+	Success bool   `json:"success"`
+	T       int64  `json:"t"`
+	Tid     string `json:"tid"`
+
+	Result json.RawMessage `json:"result,omitempty"`
+
+	Code int    `json:"code,omitempty"`
+	Msg  string `json:"msg,omitempty"`
 }
 
 type Client struct {
@@ -32,11 +41,11 @@ type Client struct {
 	tokenLock    sync.RWMutex
 }
 
-func NewClient(cfg *Config) (*Client, error) {
+func NewClient(accessID, accessSecret, baseURL string) (*Client, error) {
 	client := &Client{
-		accessID:     cfg.AccessID,
-		accessSecret: cfg.AccessSecret,
-		baseURL:      cfg.BaseURL,
+		accessID:     accessID,
+		accessSecret: accessSecret,
+		baseURL:      baseURL,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		token:        &Token{},
 		tokenLock:    sync.RWMutex{},
@@ -141,7 +150,7 @@ func (c *Client) doTokenRequest(req Request) (*Response, error) {
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("token request to %s failed: %w", err)
+		return nil, fmt.Errorf("token request to %s failed: %w", fullURL, err)
 	}
 	defer resp.Body.Close()
 

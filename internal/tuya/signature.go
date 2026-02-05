@@ -10,8 +10,15 @@ import (
 	"strings"
 	"time"
 
-	
+
 )
+
+type Signature struct {
+	Sign       string `json:"sign"`
+	Timestamp  string `json:"t"`
+	Nonce      string `json:"nonce"`
+	SignMethod string `json:"sign_method"`
+}
 
 func generateSignature(accessID, accessSecret, accessToken string, req Request) (*Signature, error) {
 	timestamp := strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10)
