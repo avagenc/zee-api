@@ -9,7 +9,7 @@ import (
 
 func ValidateSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	var exists bool
-	query := "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'tuya_smart_accounts')"
+	query := "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'tuya_app_accounts')"
 
 	err := pool.QueryRow(ctx, query).Scan(&exists)
 	if err != nil {
@@ -17,7 +17,7 @@ func ValidateSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	if !exists {
-		return fmt.Errorf("critical table 'tuya_accounts' does not exist. Please run database migrations")
+		return fmt.Errorf("critical table 'tuya_app_accounts' does not exist. Please run database migrations")
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -31,6 +32,10 @@ func main() {
 		log.Fatalf("FATAL: Failed to connect to database: %v", err)
 	}
 	defer pgPool.Close()
+
+	if err := postgres.ValidateSchema(context.Background(), pgPool); err != nil {
+		log.Fatalf("FATAL: Schema validation failed: %v", err)
+	}
 
 	tuyaClient, err := tuya.NewClient(
 		cfg.Tuya.AccessID,
