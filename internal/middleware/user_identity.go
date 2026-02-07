@@ -6,13 +6,7 @@ import (
 	"github.com/avagenc/zee-api/pkg/api"
 )
 
-type UserIdentity struct{}
-
-func NewUserIdentity() *UserIdentity {
-	return &UserIdentity{}
-}
-
-func (u *UserIdentity) ToContext(next http.Handler) http.Handler {
+func RequireUserIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("x-user-id")
 		if userID == "" {

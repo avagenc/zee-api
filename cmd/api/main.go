@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/avagenc/zee-api/internal/account"
 	"github.com/avagenc/zee-api/internal/config"
 	"github.com/avagenc/zee-api/internal/device"
 	"github.com/avagenc/zee-api/internal/middleware"
@@ -46,34 +47,38 @@ func main() {
 		log.Fatalf("FATAL: Failed to create Tuya client: %v", err)
 	}
 
+	accountRepo := account.NewRepository(pgPool)
+
 	svc := struct {
-		device device.Service
+		account account.Service
+		device  device.Service
 	}{
-		device: device.NewService(tuyaClient),
+		account: account.NewService(accountRepo),
+		device:  device.NewService(tuyaClient),
 	}
 
 	mw := struct {
-		apiKey       *middleware.APIKey
-		userIdentity *middleware.UserIdentity
-		requestID    func(http.Handler) http.Handler
-		realIP       func(http.Handler) http.Handler
-		logger       func(http.Handler) http.Handler
-		recoverer    func(http.Handler) http.Handler
+		tuya      *middleware.Tuya
+		requestID func(http.Handler) http.Handler
+		realIP    func(http.Handler) http.Handler
+		logger    func(http.Handler) http.Handler
+		recoverer func(http.Handler) http.Handler
 	}{
-		apiKey:       middleware.NewAPIKey(cfg.Security.APIKey),
-		userIdentity: middleware.NewUserIdentity(),
-		requestID:    chiMiddleware.RequestID,
-		realIP:       chiMiddleware.RealIP,
-		logger:       chiMiddleware.Logger,
-		recoverer:    chiMiddleware.Recoverer,
+		tuya:      middleware.NewTuya(accountRepo, tuyaClient),
+		requestID: chiMiddleware.RequestID,
+		realIP:    chiMiddleware.RealIP,
+		logger:    chiMiddleware.Logger,
+		recoverer: chiMiddleware.Recoverer,
 	}
 
 	hdl := struct {
-		system *system.Handler
-		device *device.Handler
+		system  *system.Handler
+		account *account.Handler
+		device  *device.Handler
 	}{
-		system: system.NewHandler(cfg.App.Name, cfg.App.Version, cfg.App.Env),
-		device: device.NewHandler(svc.device),
+		system:  system.NewHandler(cfg.App.Name, cfg.App.Version, cfg.App.Env),
+		account: account.NewHandler(svc.account),
+		device:  device.NewHandler(svc.device),
 	}
 
 	r := chi.NewRouter()
@@ -82,15 +87,26 @@ func main() {
 	r.Use(mw.realIP)
 	r.Use(mw.logger)
 	r.Use(mw.recoverer)
-	r.Use(mw.apiKey.Authenticate)
+	r.Use(middleware.AuthenticateAPIKey(cfg.Security.APIKey))
 
 	r.Get("/", hdl.system.Index)
 
 	r.Group(func(r chi.Router) {
-		r.Use(mw.userIdentity.ToContext)
+		r.Use(middleware.RequireUserIdentity)
 
-		r.Post("/devices/commands", hdl.device.SendCommands)
-		r.Get("/homes/{homeId}/devices", hdl.device.ListByHome)
+		r.Get("/account", hdl.account.Get)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireUserIdentity)
+		r.Use(mw.tuya.RequireAccount)
+
+		r.Get("/devices", hdl.device.List)
+
+		r.Route("/devices/{deviceId}", func(r chi.Router) {
+			r.Use(mw.tuya.RequireDeviceOwnership)
+			r.Post("/commands", hdl.device.SendCommands)
+		})
 	})
 
 	server := &http.Server{

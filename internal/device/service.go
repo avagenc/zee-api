@@ -5,30 +5,15 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/avagenc/zee-api/internal/domain"
 )
-
-type DataPoint struct {
-	Code  string `json:"code"`
-	Value any    `json:"value"`
-}
-
-type Channel struct {
-	Identifier string `json:"identifier"`
-	Name       string `json:"name"`
-}
-
-type Device struct {
-	ID              string      `json:"id"`
-	Category        string      `json:"category"`
-	Name            string      `json:"name"`
-	Status          []DataPoint `json:"status"`
-	CodeNameMapping []Channel   `json:"code_name_mapping"`
-}
 
 type TuyaClient interface {
 	QueryDevicesInHome(homeID string) (json.RawMessage, error)
 	SendCommands(deviceID string, commands any) (json.RawMessage, error)
 	GetMultiChannelName(deviceID string) (json.RawMessage, error)
+	GetUserDeviceList(tuyaUID string) ([]domain.Device, error)
 }
 
 type service struct {
@@ -39,7 +24,7 @@ func NewService(tuya TuyaClient) *service {
 	return &service{tuya: tuya}
 }
 
-func (s *service) SendCommands(deviceID string, commands []DataPoint) (json.RawMessage, error) {
+func (s *service) SendCommands(deviceID string, commands []domain.DataPoint) (json.RawMessage, error) {
 	result, err := s.tuya.SendCommands(deviceID, commands)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send commands: %w", err)
@@ -47,13 +32,31 @@ func (s *service) SendCommands(deviceID string, commands []DataPoint) (json.RawM
 	return result, nil
 }
 
-func (s *service) ListByHome(homeID string) ([]Device, error) {
+func (s *service) ListByTuyaUID(tuyaUID string) ([]domain.Device, error) {
+	devices, err := s.tuya.GetUserDeviceList(tuyaUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(devices) == 0 {
+		return []domain.Device{}, nil
+	}
+
+	if err := s.enrichDevices(devices); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	}
+
+	return devices, nil
+}
+
+// Deprecated: Unused. Kept for future reference.
+func (s *service) ListByHome(homeID string) ([]domain.Device, error) {
 	result, err := s.tuya.QueryDevicesInHome(homeID)
 	if err != nil {
 		return nil, err
 	}
 
-	var devices []Device
+	var devices []domain.Device
 	if len(result) > 0 {
 		if err := json.Unmarshal(result, &devices); err != nil {
 			return nil, fmt.Errorf("failed to decode devices: %w", err)
@@ -61,14 +64,22 @@ func (s *service) ListByHome(homeID string) ([]Device, error) {
 	}
 
 	if len(devices) == 0 {
-		return []Device{}, nil
+		return []domain.Device{}, nil
 	}
 
-	var devicesToEnrich []*Device
+	if err := s.enrichDevices(devices); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	}
+
+	return devices, nil
+}
+
+func (s *service) enrichDevices(devices []domain.Device) error {
+	var devicesToEnrich []*domain.Device
 	for i := range devices {
 		device := &devices[i]
 		category := strings.ToLower(device.Category)
-		device.CodeNameMapping = []Channel{}
+		device.CodeNameMapping = []domain.Channel{}
 
 		if (category == "kg" || strings.HasPrefix(category, "cz")) && device.ID != "" {
 			devicesToEnrich = append(devicesToEnrich, device)
@@ -76,21 +87,18 @@ func (s *service) ListByHome(homeID string) ([]Device, error) {
 	}
 
 	if len(devicesToEnrich) > 0 {
-		if err := s.enrichWithChannelNames(devicesToEnrich); err != nil {
-			fmt.Printf("Warning: %v\n", err)
-		}
+		return s.enrichWithChannelNames(devicesToEnrich)
 	}
-
-	return devices, nil
+	return nil
 }
 
-func (s *service) enrichWithChannelNames(devices []*Device) error {
+func (s *service) enrichWithChannelNames(devices []*domain.Device) error {
 	var wg sync.WaitGroup
 	errs := make(chan error, len(devices))
 
 	for _, device := range devices {
 		wg.Add(1)
-		go func(device *Device) {
+		go func(device *domain.Device) {
 			defer wg.Done()
 
 			result, err := s.tuya.GetMultiChannelName(device.ID)
@@ -99,7 +107,7 @@ func (s *service) enrichWithChannelNames(devices []*Device) error {
 				return
 			}
 
-			var channels []Channel
+			var channels []domain.Channel
 			if len(result) > 0 {
 				if err := json.Unmarshal(result, &channels); err != nil {
 					errs <- fmt.Errorf("failed to decode channels for device %s: %w", device.ID, err)

@@ -1,28 +1,26 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/avagenc/zee-api/pkg/api"
 )
 
-type APIKey struct {
-	apiKey string
-}
+func AuthenticateAPIKey(validKey string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := r.Header.Get("x-avagenc-api-key")
+			if key == "" {
+				api.Respond(w, http.StatusUnauthorized, api.NewErrorResponse("UNAUTHORIZED", "Missing API key", nil))
+				return
+			}
 
-func NewAPIKey(apiKey string) *APIKey {
-	return &APIKey{apiKey: apiKey}
-}
+			if key != validKey {
+				api.Respond(w, http.StatusUnauthorized, api.NewErrorResponse("UNAUTHORIZED", "Invalid API key", nil))
+				return
+			}
 
-func (a *APIKey) Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientAPIKey := r.Header.Get("x-avagenc-api-key")
-		if clientAPIKey != a.apiKey {
-			log.Printf("Authentication failed: Invalid Avagenc API Key. Request from %s", r.RemoteAddr)
-			api.Respond(w, http.StatusUnauthorized, api.NewErrorResponse("UNAUTHORIZED", "Unauthorized access", nil))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
