@@ -16,7 +16,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: &App{
-			Name:    "zee-api",
+			Name:    "zee",
 			Version: "v0.2.0",
 		},
 		Server: &Server{

@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/avagenc/zee-api/pkg/api"
+	"github.com/avagenc/zee/pkg/api"
 )
 
 func AuthenticateAPIKey(validKey string) func(http.Handler) http.Handler {

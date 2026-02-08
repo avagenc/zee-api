@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/avagenc/zee-api/internal/domain"
+	"github.com/avagenc/zee/internal/domain"
 )
 
 type TuyaClient interface {

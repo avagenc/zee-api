@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/avagenc/zee-api/internal/domain"
-	"github.com/avagenc/zee-api/internal/middleware"
-	"github.com/avagenc/zee-api/pkg/api"
+	"github.com/avagenc/zee/internal/domain"
+	"github.com/avagenc/zee/internal/middleware"
+	"github.com/avagenc/zee/pkg/api"
 	"github.com/go-chi/chi/v5"
 )
 

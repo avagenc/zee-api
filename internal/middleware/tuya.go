@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/avagenc/zee-api/pkg/api"
+	"github.com/avagenc/zee/pkg/api"
 	"github.com/go-chi/chi/v5"
 )
 
