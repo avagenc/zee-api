@@ -5,13 +5,6 @@ on:
     branches: ["main", "dev"]
 
 jobs:
-name: Deploy App
-
-on:
-  push:
-    branches: ["main", "dev"]
-
-jobs:
   deploy:
     runs-on: ubuntu-latest
 
